@@ -1,42 +1,42 @@
 import type { Request, Response } from "express";
-import { CrudService } from "../services/CrudService.js";
+import { CrudService } from "../services/crudService.js";
 
 export function createCrudController<T extends { id: string }>(
   service: CrudService<T>
 ) {
   return {
-    getAll: (req: Request, res: Response) => {
-      res.json(service.findAll());
+    getAll: async (req: Request, res: Response) => {
+      res.json(await service.findAll());
     },
 
-    getById: (req: Request, res: Response) => {
+    getById: async (req: Request, res: Response) => {
       const id = req.params.id as string;
       try {
-        res.json(service.findById(id));
+        res.json(await service.findById(id));
       } catch (error) {
         res.status(404).json({ message: "Not found" });
       }
     },
 
-    create: (req: Request, res: Response) => {
-      const created = service.create(req.body);
+    create: async (req: Request, res: Response) => {
+      const created = await service.create(req.body);
       res.status(201).json(created);
     },
 
-    update: (req: Request, res: Response) => {
+    update: async (req: Request, res: Response) => {
       const id = req.params.id as string;
       try {
-        const updated = service.update(id, req.body);
+        const updated = await service.update(id, req.body);
         res.json(updated);
       } catch (error) {
         res.status(404).json({ message: "Not found" });
       }
     },
 
-    delete: (req: Request, res: Response) => {
+    delete: async (req: Request, res: Response) => {
       const id = req.params.id as string;
       try {
-        service.delete(id);
+        await service.delete(id);
         res.status(204).send();
       } catch (error) {
         res.status(404).json({ message: "Not found" });

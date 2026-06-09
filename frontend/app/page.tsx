@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiGet, apiPost, type Role } from "@/app/lib/api";
 import { useSession } from "@/app/lib/session";
 
@@ -275,7 +276,7 @@ export default function Workspace() {
       </header>
 
       <section
-        style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}
+        style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, alignItems: "center" }}
       >
         {visibleGets.map((a) => (
           <button
@@ -286,6 +287,16 @@ export default function Workspace() {
             {a.label}
           </button>
         ))}
+        {(role === "ADMIN" || role === "MANAGER" || role === "USER") && (
+          <Link href="/accounts" style={ghostButtonStyle}>
+            Accounts Page
+          </Link>
+        )}
+        {(role === "ADMIN" || role === "MANAGER") && (
+          <Link href="/analytics" style={ghostButtonStyle}>
+            Analytics
+          </Link>
+        )}
       </section>
 
       {(role === "ADMIN" || role === "MANAGER") && (

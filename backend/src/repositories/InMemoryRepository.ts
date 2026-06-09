@@ -1,4 +1,4 @@
-export class InMemoryRepository<T extends { id: string }> {
+/*export class InMemoryRepository<T extends { id: string }> {
   private items = new Map<string, T>();
 
   findAll(): T[] {
@@ -27,3 +27,5 @@ export class InMemoryRepository<T extends { id: string }> {
     return this.items.delete(id);
   }
 }
+
+*/

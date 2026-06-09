@@ -7,9 +7,9 @@ import * as crm from "./crmService.js";
  */
 export type EventRuleDeps = {
   /** All events currently stored (used to count recent activity). */
-  listEvents: () => Event[];
-  findAccount: (id: string) => Account | undefined;
-  persistAccount: (account: Account) => void;
+  listEvents: () => Promise<Event[]>;
+  findAccount: (id: string) => Promise<Account | undefined>;
+  persistAccount: (account: Account) => Promise<void>;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -22,20 +22,19 @@ const HIGH_ACTIVITY_THRESHOLD = 3; // strictly MORE than 3 events in 24h
  * - More than 3 events for the account within 24h -> mark High Activity.
  * - document_uploaded -> update account.lastActivity and trigger a CRM sync.
  */
-export function applyEventRules(
+export async function applyEventRules(
   event: Event,
   deps: EventRuleDeps,
   now: number = Date.now()
-): void {
-  const account = deps.findAccount(event.accountId);
+): Promise<void> {
+  const account = await deps.findAccount(event.accountId);
   if (!account) return; // event may reference an account not in the store
 
   let changed = false;
 
   // High-activity rule.
   const cutoff = now - DAY_MS;
-  const recentCount = deps
-    .listEvents()
+  const recentCount = (await deps.listEvents())
     .filter(
       (e) => e.accountId === account.id && Date.parse(e.createdAt) >= cutoff
     ).length;
@@ -48,12 +47,12 @@ export function applyEventRules(
   if (event.type === "document_uploaded") {
     account.lastActivity = event.createdAt;
     changed = true;
-    deps.persistAccount(account);
+    await deps.persistAccount(account);
     crm.syncAccount(account, "document_uploaded");
     return;
   }
 
   if (changed) {
-    deps.persistAccount(account);
+    await deps.persistAccount(account);
   }
 }

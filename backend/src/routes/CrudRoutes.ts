@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { CrudService } from "../services/CrudService.js";
-import { createCrudController } from "../controllers/CreateCrudController.js";
+import { CrudService } from "../services/crudService.js";
+import { createCrudController } from "../controllers/createCrudController.js";
 
 export function createCrudRoutes<T extends { id: string }>(
   service: CrudService<T>

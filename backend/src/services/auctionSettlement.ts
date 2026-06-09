@@ -10,8 +10,8 @@ import * as crm from "./crmService.js";
  * Dependencies injected so this service is decoupled from app.ts and testable.
  */
 export type SettlementDeps = {
-  findAccount: (id: string) => Account | undefined;
-  persistAccount: (account: Account) => void;
+  findAccount: (id: string) => Promise<Account | undefined>;
+  persistAccount: (account: Account) => Promise<void>;
 };
 
 export type SettleOptions = {
@@ -32,13 +32,13 @@ export type SettleOptions = {
  *
  * Mutates and returns the auction; the caller persists the auction itself.
  */
-export function settleAuction(
+export async function settleAuction(
   auction: AuctionOpportunity,
   offers: BankOffer[],
   deps: SettlementDeps,
   options: SettleOptions = {},
   now: number = Date.now()
-): AuctionOpportunity {
+): Promise<AuctionOpportunity> {
   if (auction.status !== "OPEN") return auction;
   if (!options.force && !isExpired(auction, now)) return auction;
 
@@ -53,10 +53,10 @@ export function settleAuction(
   auction.winningOfferId = winner.id;
 
   // Winning offer -> account marked as Won + CRM sync.
-  const account = deps.findAccount(auction.accountId);
+  const account = await deps.findAccount(auction.accountId);
   if (account) {
     account.status = "WON";
-    deps.persistAccount(account);
+    await deps.persistAccount(account);
     crm.notifyAccountWon(account, winner);
   }
 

@@ -1,15 +1,15 @@
 import { v4 as uuid } from "uuid";
-import { InMemoryRepository } from "../repositories/InMemoryRepository.js";
+import { MongoRepository } from "../repositories/MongoRepository.js";
 
 export class CrudService<T extends { id: string }> {
-  constructor(private repository: InMemoryRepository<T>) {}
+  constructor(private repository: MongoRepository<T>) {}
 
-  findAll(): T[] {
+  findAll(): Promise<T[]> {
     return this.repository.findAll();
   }
 
-  findById(id: string): T {
-    const item = this.repository.findById(id);
+  async findById(id: string): Promise<T> {
+    const item = await this.repository.findById(id);
 
     if (!item) {
       throw new Error("Entity not found");
@@ -18,7 +18,7 @@ export class CrudService<T extends { id: string }> {
     return item;
   }
 
-  create(data: Omit<T, "id">): T {
+  create(data: Omit<T, "id">): Promise<T> {
     const item = {
       id: uuid(),
       ...data
@@ -27,8 +27,8 @@ export class CrudService<T extends { id: string }> {
     return this.repository.create(item);
   }
 
-  update(id: string, data: Partial<T>): T {
-    const existing = this.findById(id);
+  async update(id: string, data: Partial<T>): Promise<T> {
+    const existing = await this.findById(id);
 
     const updated = {
       ...existing,
@@ -36,11 +36,12 @@ export class CrudService<T extends { id: string }> {
       id
     };
 
-    return this.repository.update(id, updated)!;
+    const updatedItem = await this.repository.update(id, updated);
+    return updatedItem!;
   }
 
-  delete(id: string): void {
-    const deleted = this.repository.delete(id);
+  async delete(id: string): Promise<void> {
+    const deleted = await this.repository.delete(id);
 
     if (!deleted) {
       throw new Error("Entity not found");

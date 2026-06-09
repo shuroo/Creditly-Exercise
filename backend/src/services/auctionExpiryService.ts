@@ -1,35 +1,32 @@
-import type { AuctionOpportunity, BankOffer } from "../models/types.js";
-import { settleIfExpired } from "./auctionRules.js";
+import type { AuctionOpportunity } from "../models/types.js";
 
 /**
  * Dependencies the sweep needs, injected so this service stays decoupled from
  * app.ts (avoids a circular import) and is easy to test.
+ *
+ * `settle` settles one auction (timeout path) and persists it + its side
+ * effects (account WON / EXPIRED, CRM). It must be idempotent on already-
+ * settled auctions and return the auction so we can detect a status change.
  */
 export type ExpirySweepDeps = {
-  listAuctions: () => AuctionOpportunity[];
-  offersForAuction: (auctionId: string) => BankOffer[];
-  persist: (auction: AuctionOpportunity) => void;
+  listAuctions: () => Promise<AuctionOpportunity[]>;
+  settle: (auction: AuctionOpportunity) => Promise<AuctionOpportunity>;
 };
 
 /**
  * One pass over all auctions: settle any whose 3-day window has elapsed. This
- * is the *active* counterpart to the lazy settle that already runs on reads —
- * it guarantees an auction closes even if nobody ever touches it again. Reuses
- * settleIfExpired so the outcome (CLOSED+winner, or EXPIRED when no offers) is
- * identical to the request-driven path. Returns the number settled.
+ * is the *active* counterpart to the lazy settle that runs on reads — it
+ * guarantees an auction closes even if nobody ever touches it again. The actual
+ * outcome (CLOSED+winner+account WON, or EXPIRED when no offers) lives in the
+ * injected settle, so this path is identical to the request-driven one.
+ * Returns the number settled.
  */
-export function runExpirySweep(
-  deps: ExpirySweepDeps,
-  now: number = Date.now()
-): number {
+export async function runExpirySweep(deps: ExpirySweepDeps): Promise<number> {
   let settled = 0;
-  for (const auction of deps.listAuctions()) {
+  for (const auction of await deps.listAuctions()) {
     const before = auction.status;
-    settleIfExpired(auction, deps.offersForAuction(auction.id), now);
-    if (auction.status !== before) {
-      deps.persist(auction);
-      settled++;
-    }
+    await deps.settle(auction);
+    if (auction.status !== before) settled++;
   }
   return settled;
 }
@@ -46,10 +43,13 @@ export function startAuctionExpiryService(
   intervalMs: number = DEFAULT_INTERVAL_MS
 ): { stop: () => void } {
   const tick = () => {
-    const settled = runExpirySweep(deps);
-    if (settled > 0) {
-      console.log(`[auction-expiry] settled ${settled} expired auction(s)`);
-    }
+    runExpirySweep(deps)
+      .then((settled) => {
+        if (settled > 0) {
+          console.log(`[auction-expiry] settled ${settled} expired auction(s)`);
+        }
+      })
+      .catch((err) => console.error("[auction-expiry] sweep failed", err));
   };
 
   tick(); // settle anything already overdue at startup
