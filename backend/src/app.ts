@@ -31,6 +31,7 @@ import {
   canManageAccount,
   scopeAccountsForUser,
   scopeEventsForUser,
+  stripAccountPII,
   toPublicUser,
 } from "./services/rbac.js";
 import { startAuctionExpiryService } from "./services/auctionExpiryService.js";
@@ -160,21 +161,23 @@ app.get("/me", (req, res) => {
 
 app.get(
   "/accounts",
-  requireRole("ADMIN", "MANAGER", "USER"),
+  requireRole("ADMIN", "MANAGER", "USER", "BANKER"),
   async (req, res) => {
     const user = req.user!;
     const scoped = scopeAccountsForUser(
       await accountService.findAll(),
       user,
-      await eventService.findAll()
+      await eventService.findAll(),
+      await auctionService.findAll()
     );
-    res.json(scoped);
+    const result = user.role === "BANKER" ? scoped.map(stripAccountPII) : scoped;
+    res.json(result);
   }
 );
 
 app.get(
   "/accounts/:id",
-  requireRole("ADMIN", "MANAGER", "USER"),
+  requireRole("ADMIN", "MANAGER", "USER", "BANKER"),
   async (req, res) => {
     const user = req.user!;
     const id = req.params.id as string;
@@ -184,11 +187,17 @@ app.get(
     } catch {
       return res.status(404).json({ message: "Not found" });
     }
-    const visible = scopeAccountsForUser([account], user, await eventService.findAll());
+    const visible = scopeAccountsForUser(
+      [account],
+      user,
+      await eventService.findAll(),
+      await auctionService.findAll()
+    );
     if (visible.length === 0) {
       return res.status(404).json({ message: "Not found" });
     }
-    res.json(visible[0]);
+    const result = user.role === "BANKER" ? stripAccountPII(visible[0]!) : visible[0]!;
+    res.json(result);
   }
 );
 
@@ -209,6 +218,9 @@ app.post(
       managerId,
       highActivity: Boolean(req.body.highActivity),
       ...(req.body.lastActivity ? { lastActivity: req.body.lastActivity } : {}),
+      ...(req.body.salary !== undefined ? { salary: Number(req.body.salary) } : {}),
+      ...(req.body.loanAmount !== undefined ? { loanAmount: Number(req.body.loanAmount) } : {}),
+      ...(req.body.propertyValue !== undefined ? { propertyValue: Number(req.body.propertyValue) } : {}),
     });
     res.status(201).json(created);
   }

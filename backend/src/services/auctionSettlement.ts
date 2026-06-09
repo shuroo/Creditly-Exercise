@@ -1,3 +1,14 @@
+/**
+ * Auction settlement service — the single authority for closing an auction and
+ * applying all downstream side-effects (account status, CRM notification).
+ *
+ * Both the manual "close now" endpoint and the periodic expiry sweep delegate
+ * here so the outcome is always identical regardless of how settlement was
+ * triggered.
+ *
+ * @author Shiri Rave
+ * @since 09/06/26
+ */
 import type {
   Account,
   AuctionOpportunity,
@@ -10,27 +21,38 @@ import * as crm from "./crmService.js";
  * Dependencies injected so this service is decoupled from app.ts and testable.
  */
 export type SettlementDeps = {
+  /** Look up an account by its UUID. Returns `undefined` if not found. */
   findAccount: (id: string) => Promise<Account | undefined>;
+  /** Persist a mutated account back to the store. */
   persistAccount: (account: Account) => Promise<void>;
 };
 
+/** Options that modify settlement behaviour. */
 export type SettleOptions = {
-  /** true = explicit manual close (close regardless of the 3-day window). */
+  /** When `true`, close the auction immediately regardless of the 3-day window. */
   force?: boolean;
 };
 
 /**
- * Settle an auction and apply its account/CRM side effects. This is the single
- * place that turns an auction outcome into account state, so both the manual
- * close endpoint and the timeout sweep behave identically.
+ * Settle an auction and apply its account / CRM side-effects.
  *
- * - Already-settled (CLOSED/EXPIRED) -> no-op.
- * - Not expired and not forced -> left OPEN (no-op).
- * - No offers -> EXPIRED (spec: "No offers -> Expired"), account untouched.
- * - With offers -> CLOSED + lowest-rate winner; the account is marked WON and
- *   the CRM is notified (spec: "Winning offer -> Account marked as Won").
+ * Decision table:
+ * - Already CLOSED or EXPIRED → no-op (idempotent).
+ * - Not yet expired and `force` is false → left OPEN (no-op).
+ * - Expired with no offers → status set to `"EXPIRED"`; account untouched.
+ * - Expired with offers → status set to `"CLOSED"`, `winningOfferId` set to
+ *   the lowest-rate offer; the related account's status is changed to `"WON"`
+ *   and the CRM is notified.
  *
- * Mutates and returns the auction; the caller persists the auction itself.
+ * The auction object is mutated in place; the caller is responsible for
+ * persisting it.
+ *
+ * @param auction - The auction to settle (mutated).
+ * @param offers  - All bank offers submitted for this auction.
+ * @param deps    - Injected I/O helpers.
+ * @param options - Optional overrides (`force`).
+ * @param now     - Current epoch ms (injectable for tests; defaults to `Date.now()`).
+ * @returns The mutated auction.
  */
 export async function settleAuction(
   auction: AuctionOpportunity,
@@ -52,7 +74,7 @@ export async function settleAuction(
   auction.status = "CLOSED";
   auction.winningOfferId = winner.id;
 
-  // Winning offer -> account marked as Won + CRM sync.
+  // Winning offer → account marked WON + CRM sync.
   const account = await deps.findAccount(auction.accountId);
   if (account) {
     account.status = "WON";

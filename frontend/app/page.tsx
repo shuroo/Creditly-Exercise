@@ -132,7 +132,7 @@ const ENTITIES: Entity[] = [
 ];
 
 const GET_ACTIONS: Array<{ label: string; path: string; roles: Role[] }> = [
-  { label: "Get Accounts", path: "/accounts", roles: ["ADMIN", "MANAGER", "USER"] },
+  { label: "Get Accounts", path: "/accounts", roles: ["ADMIN", "MANAGER", "USER", "BANKER"] },
   { label: "Get Events", path: "/events", roles: ["ADMIN", "MANAGER", "USER"] },
   {
     label: "Get Auctions",
@@ -287,7 +287,7 @@ export default function Workspace() {
             {a.label}
           </button>
         ))}
-        {(role === "ADMIN" || role === "MANAGER" || role === "USER") && (
+        {(role === "ADMIN" || role === "MANAGER" || role === "USER" || role === "BANKER") && (
           <Link href="/accounts" style={ghostButtonStyle}>
             Accounts Page
           </Link>

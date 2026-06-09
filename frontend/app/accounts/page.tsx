@@ -8,13 +8,16 @@ import { useSession } from "@/app/lib/session";
 
 type Account = {
   id: string;
-  customerName: string;
-  phone: string;
-  email: string;
-  status: "NEW" | "ELIGIBLE" | "AUCTION_OPEN" | "WON" | "EXPIRED";
-  managerId: string;
+  customerName?: string;  // absent when viewed by BANKER
+  phone?: string;         // absent when viewed by BANKER
+  email?: string;         // absent when viewed by BANKER
+  status?: "NEW" | "ELIGIBLE" | "AUCTION_OPEN" | "WON" | "EXPIRED"; // absent for BANKER
+  managerId?: string;     // absent when viewed by BANKER
   lastActivity?: string;
   highActivity: boolean;
+  salary?: number;
+  loanAmount?: number;
+  propertyValue?: number;
 };
 
 type AuctionOpportunity = {
@@ -245,15 +248,7 @@ export default function AccountsPage() {
     return <main style={{ padding: 30 }}>Loading…</main>;
   }
 
-  if (role === "BANKER") {
-    return (
-      <main style={{ padding: 30, fontFamily: "system-ui, Arial, sans-serif", color: "#1f2937" }}>
-        <p style={{ color: "#6b7280" }}>Bankers do not have access to accounts.</p>
-        <Link href="/" style={linkStyle}>← Back to workspace</Link>
-      </main>
-    );
-  }
-
+  const isBanker = role === "BANKER";
   const canManage = role === "ADMIN" || role === "MANAGER";
 
   return (
@@ -301,17 +296,36 @@ export default function AccountsPage() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 15 }}>{account.customerName}</div>
+                  {isBanker ? (
+                    <div style={{ fontSize: 13, color: "#6b7280" }}>
+                      {account.loanAmount != null && (
+                        <span>Loan: <strong>₪{account.loanAmount.toLocaleString()}</strong></span>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontWeight: 600, fontSize: 15 }}>{account.customerName}</div>
+                  )}
                   <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{account.id}</div>
                 </div>
                 <div style={{ fontSize: 13 }}>
-                  <div>{account.email}</div>
-                  <div style={{ color: "#6b7280" }}>{account.phone}</div>
+                  {isBanker ? (
+                    <div style={{ color: "#6b7280" }}>
+                      {account.salary != null && <div>Salary: ₪{account.salary.toLocaleString()}</div>}
+                      {account.propertyValue != null && <div>Property: ₪{account.propertyValue.toLocaleString()}</div>}
+                    </div>
+                  ) : (
+                    <>
+                      <div>{account.email}</div>
+                      <div style={{ color: "#6b7280" }}>{account.phone}</div>
+                    </>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, padding: "3px 8px", borderRadius: 12, ...(STATUS_COLORS[account.status] ?? {}) }}>
-                    {account.status}
-                  </span>
+                  {account.status && (
+                    <span style={{ fontSize: 12, fontWeight: 600, padding: "3px 8px", borderRadius: 12, ...(STATUS_COLORS[account.status] ?? {}) }}>
+                      {account.status}
+                    </span>
+                  )}
                   {account.highActivity && (
                     <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 7px", borderRadius: 12, background: "#fef3c7", color: "#92400e" }}>
                       High Activity
@@ -330,21 +344,23 @@ export default function AccountsPage() {
               {isExpanded && (
                 <div style={{ padding: 16, background: "#f9fafb", borderTop: "1px solid #e5e7eb", display: "grid", gap: 20 }}>
 
-                  {/* Manager */}
-                  <section>
-                    <h3 style={sectionHeadStyle}>Manager</h3>
-                    {manager ? (
-                      <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 6, padding: "10px 14px", fontSize: 13, display: "flex", gap: 10, alignItems: "center" }}>
-                        <span style={{ fontWeight: 600 }}>{manager.name}</span>
-                        <span style={{ color: "#6b7280" }}>{manager.email}</span>
-                        <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 10, background: "#f3f4f6", color: "#6b7280" }}>{manager.role}</span>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 13, color: "#6b7280" }}>
-                        ID: <code style={{ background: "#f3f4f6", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>{account.managerId}</code>
-                      </div>
-                    )}
-                  </section>
+                  {/* Manager — not shown to bankers (PII) */}
+                  {!isBanker && (
+                    <section>
+                      <h3 style={sectionHeadStyle}>Manager</h3>
+                      {manager ? (
+                        <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 6, padding: "10px 14px", fontSize: 13, display: "flex", gap: 10, alignItems: "center" }}>
+                          <span style={{ fontWeight: 600 }}>{manager.name}</span>
+                          <span style={{ color: "#6b7280" }}>{manager.email}</span>
+                          <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 10, background: "#f3f4f6", color: "#6b7280" }}>{manager.role}</span>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 13, color: "#6b7280" }}>
+                          ID: <code style={{ background: "#f3f4f6", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>{account.managerId}</code>
+                        </div>
+                      )}
+                    </section>
+                  )}
 
                   {/* Auctions */}
                   <section>
@@ -445,8 +461,8 @@ export default function AccountsPage() {
                                     {cs.loading ? "Closing…" : "Close"}
                                   </button>
                                 )}
-                                {/* Add Offer button — ADMIN only (BANKER can't reach this page) */}
-                                {role === "ADMIN" && auction.status === "OPEN" && !of_.open && (
+                                {/* Add Offer button — ADMIN and BANKER */}
+                                {(role === "ADMIN" || role === "BANKER") && auction.status === "OPEN" && !of_.open && (
                                   <button
                                     onClick={() =>
                                       setOfferForms((prev) => ({
@@ -505,6 +521,11 @@ export default function AccountsPage() {
                                         style={inputStyle}
                                       />
                                     </label>
+                                  )}
+                                  {role === "BANKER" && session.user.bankId && (
+                                    <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>
+                                      Submitting as <strong>{session.user.bankId}</strong>
+                                    </p>
                                   )}
                                   {of_.error && <p style={{ margin: 0, fontSize: 12, color: "#dc2626" }}>{of_.error}</p>}
                                   <div style={{ display: "flex", gap: 8 }}>

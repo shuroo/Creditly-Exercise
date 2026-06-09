@@ -1,25 +1,43 @@
+/**
+ * Periodic auction-expiry sweep service.
+ *
+ * Runs one pass over all open auctions on startup and then on a configurable
+ * interval. Any auction whose 3-day window has elapsed is settled via the
+ * injected `settle` callback (which delegates to {@link settleAuction} in
+ * production), guaranteeing closure even if no client ever requests it.
+ *
+ * @author Shiri Rave
+ * @since 09/06/26
+ */
 import type { AuctionOpportunity } from "../models/types.js";
 
 /**
  * Dependencies the sweep needs, injected so this service stays decoupled from
- * app.ts (avoids a circular import) and is easy to test.
+ * `app.ts` (avoids circular imports) and is easy to test with fakes.
  *
- * `settle` settles one auction (timeout path) and persists it + its side
- * effects (account WON / EXPIRED, CRM). It must be idempotent on already-
- * settled auctions and return the auction so we can detect a status change.
+ * `settle` must be idempotent on already-settled auctions and must mutate the
+ * auction in place so that `runExpirySweep` can detect a status change.
  */
 export type ExpirySweepDeps = {
+  /** Return all auctions (OPEN, CLOSED, and EXPIRED). */
   listAuctions: () => Promise<AuctionOpportunity[]>;
+  /**
+   * Settle one auction (timeout path): applies the outcome, persists the
+   * auction and its account side-effects, and returns the mutated auction.
+   */
   settle: (auction: AuctionOpportunity) => Promise<AuctionOpportunity>;
 };
 
 /**
- * One pass over all auctions: settle any whose 3-day window has elapsed. This
- * is the *active* counterpart to the lazy settle that runs on reads — it
- * guarantees an auction closes even if nobody ever touches it again. The actual
- * outcome (CLOSED+winner+account WON, or EXPIRED when no offers) lives in the
- * injected settle, so this path is identical to the request-driven one.
- * Returns the number settled.
+ * Execute one sweep pass: settle every auction whose expiry window has elapsed.
+ *
+ * Iterates all auctions and calls `deps.settle` on each one. A status change
+ * after `settle` returns counts as "settled". The actual outcome logic (CLOSED
+ * with winner, EXPIRED with no offers) lives inside the injected `settle`, so
+ * this sweep is identical to the request-driven close path.
+ *
+ * @param deps - Injected I/O helpers.
+ * @returns The number of auctions whose status changed during this pass.
  */
 export async function runExpirySweep(deps: ExpirySweepDeps): Promise<number> {
   let settled = 0;
@@ -31,12 +49,19 @@ export async function runExpirySweep(deps: ExpirySweepDeps): Promise<number> {
   return settled;
 }
 
-const DEFAULT_INTERVAL_MS = 60_000; // 1 minute — far finer than a 3-day window.
+/** 1-minute tick — much finer than a 3-day window, negligible overhead. */
+const DEFAULT_INTERVAL_MS = 60_000;
 
 /**
- * Start the periodic auction-expiry sweep. Runs one pass immediately, then on
- * the given interval. The timer is unref'd so it never keeps the process alive
- * on its own. Returns a stop() to clear it (useful for tests / shutdown).
+ * Start the periodic auction-expiry sweep.
+ *
+ * Runs one pass immediately to settle anything already overdue at startup, then
+ * repeats on the given interval. The timer is `unref`'d so it never prevents
+ * a clean process exit. Call `stop()` on graceful shutdown or in tests.
+ *
+ * @param deps       - Injected I/O helpers (see {@link ExpirySweepDeps}).
+ * @param intervalMs - How often to sweep, in milliseconds (default: 60 000).
+ * @returns An object with a `stop()` method that clears the interval.
  */
 export function startAuctionExpiryService(
   deps: ExpirySweepDeps,
